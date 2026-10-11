@@ -1,0 +1,25 @@
+# UNTESTED workflow: builds the plugin on GitHub and packs miside-minecraft-mod.zip.
+# Run it from the repository's Actions tab ("Run workflow"), then download the zip
+# from the finished run's Artifacts.
+name: Build mod
+on:
+  workflow_dispatch:
+  push:
+    paths: ["src/**", ".github/workflows/build.yml"]
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+      - name: Build
+        run: dotnet build src/MiSideMinecraft.CI.csproj -c Release -o out
+      - name: Pack
+        shell: pwsh
+        run: Compress-Archive -Path out/MiSideMinecraft.dll -DestinationPath miside-minecraft-mod.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: miside-minecraft-mod
+          path: miside-minecraft-mod.zip
