@@ -1,0 +1,24 @@
+{
+  "schemaVersion": "1.0",
+  "title": "MiSide x Minecraft Mashup",
+  "tagline": "Explore Mita's apartment with full Minecraft inventory, crafting, and HUD mechanics in MiSide Demo.",
+  "description": "A singleplayer narrative mashup where MiSide Demo acts as the primary host, enhanced with Minecraft: Java Edition's UI, hotbar, and inventory. Collect items from around the apartment into your Minecraft slots to complete missions and survive Mita's world.",
+  "games": [
+    {
+      "slug": "miside-demo",
+      "role": "primary"
+    },
+    {
+      "slug": "minecraft-java",
+      "role": "companion"
+    }
+  ],
+  "multiplayer": false,
+  "components": [
+    {
+      "fileName": "miside-minecraft-mod.zip",
+      "mode": "installed",
+      "destination": "{game}/BepInEx/plugins"
+    }
+  ]
+}
