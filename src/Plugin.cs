@@ -1,16 +1,44 @@
-// UNTESTED / NOT COMPILED. Written without access to the game files.
+// UNTESTED. Written without access to the game. Target: BepInEx 6 (Unity IL2CPP).
 // MiSide x Minecraft: hotbar + inventory, block placing, TNT that only breaks your own blocks,
-// and simple Mita reactions. Controls: E = inventory, 1-5 / mouse wheel = pick slot,
-// right mouse = place, left mouse = remove your block, F = ignite TNT in front of you.
+// and simple Mita reactions.
+// Controls: E = inventory, 1-5 / mouse wheel = pick slot, right mouse = place,
+// left mouse = remove your block, F = ignite the TNT you look at.
+using System;
 using System.Collections.Generic;
 using BepInEx;
+using BepInEx.Unity.IL2CPP;
+using Il2CppInterop.Runtime.Injection;
 using UnityEngine;
 
 namespace MiSideMinecraft
 {
     [BepInPlugin("com.gorikla34.miside.minecraft", "MiSide x Minecraft", "1.0.0")]
-    public class Plugin : BaseUnityPlugin
+    public class Plugin : BasePlugin
     {
+        public static Plugin Instance;
+
+        public override void Load()
+        {
+            Instance = this;
+            ClassInjector.RegisterTypeInIl2Cpp<MCBlock>();
+            ClassInjector.RegisterTypeInIl2Cpp<MCRunner>();
+            AddComponent<MCRunner>();
+            Log.LogInfo("MiSide x Minecraft loaded (untested build).");
+        }
+    }
+
+    public class MCBlock : MonoBehaviour
+    {
+        public MCBlock(IntPtr ptr) : base(ptr) { }
+        public int Kind;
+        public bool Lit;
+        public float FuseLeft;
+    }
+
+    public class MCRunner : MonoBehaviour
+    {
+        public MCRunner(IntPtr ptr) : base(ptr) { }
+
         static readonly string[] Names = { "Dirt", "Stone", "Wood", "Glass", "TNT" };
         static readonly Color[] Colors =
         {
@@ -28,12 +56,20 @@ namespace MiSideMinecraft
 
         void Update()
         {
-            if (Input.GetKeyDown(KeyCode.E)) inventoryOpen = !inventoryOpen;
+            if (Input.GetKeyDown(KeyCode.E))
+            {
+                inventoryOpen = !inventoryOpen;
+                // the game probably locks the cursor; free it while the inventory is open
+                Cursor.visible = inventoryOpen;
+                Cursor.lockState = inventoryOpen ? CursorLockMode.None : CursorLockMode.Locked;
+            }
             for (int i = 0; i < Names.Length; i++)
-                if (Input.GetKeyDown(KeyCode.Alpha1 + i)) slot = i;
+                if (Input.GetKeyDown((KeyCode)((int)KeyCode.Alpha1 + i))) slot = i;
             float wheel = Input.GetAxis("Mouse ScrollWheel");
             if (wheel > 0f) slot = (slot + 1) % Names.Length;
             if (wheel < 0f) slot = (slot + Names.Length - 1) % Names.Length;
+
+            TickFuses();
 
             if (inventoryOpen || Camera.main == null) return;
             if (Input.GetMouseButtonDown(1)) Place();
@@ -41,7 +77,6 @@ namespace MiSideMinecraft
             if (Input.GetKeyDown(KeyCode.F)) IgniteTnt();
         }
 
-        // Aim ray from the camera centre.
         bool Aim(out RaycastHit hit)
         {
             var cam = Camera.main;
@@ -57,7 +92,6 @@ namespace MiSideMinecraft
         {
             if (!Aim(out var hit)) return;
             var pos = Snap(hit.point + hit.normal * (BlockSize * 0.5f));
-            // do not place inside the player
             if (Vector3.Distance(pos, Camera.main.transform.position) < 0.9f) return;
             var go = GameObject.CreatePrimitive(PrimitiveType.Cube);
             go.name = "MCBlock_" + Names[slot];
@@ -65,30 +99,19 @@ namespace MiSideMinecraft
             go.transform.localScale = Vector3.one * BlockSize;
             var r = go.GetComponent<Renderer>();
             r.material.color = Colors[slot];
-            if (slot == 3) SetTransparent(r.material);
             var tag = go.AddComponent<MCBlock>();
             tag.Kind = slot;
             placed.Add(go);
             MitaReact(slot == TntIndex ? "tnt_placed" : "built");
         }
 
-        static void SetTransparent(Material m)
-        {
-            m.SetFloat("_Mode", 3);
-            m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
-            m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
-            m.SetInt("_ZWrite", 0);
-            m.EnableKeyword("_ALPHABLEND_ON");
-            m.renderQueue = 3000;
-        }
-
         void RemoveLookedAt()
         {
             if (!Aim(out var hit)) return;
-            var b = hit.collider.GetComponent<MCBlock>();   // only our own blocks, never the house
+            var b = hit.collider.GetComponent<MCBlock>();   // only our blocks, never the house
             if (b == null) return;
             placed.Remove(b.gameObject);
-            Destroy(b.gameObject);
+            UnityEngine.Object.Destroy(b.gameObject);
         }
 
         void IgniteTnt()
@@ -97,55 +120,58 @@ namespace MiSideMinecraft
             var b = hit.collider.GetComponent<MCBlock>();
             if (b == null || b.Kind != TntIndex || b.Lit) return;
             b.Lit = true;
-            StartCoroutine(Fuse(b));
+            b.FuseLeft = FuseSeconds;
         }
 
-        System.Collections.IEnumerator Fuse(MCBlock tnt)
+        // Fuses are handled in Update (no coroutines: simpler and safer under IL2CPP).
+        void TickFuses()
         {
-            float t = 0f;
-            var r = tnt.GetComponent<Renderer>();
-            while (t < FuseSeconds && tnt != null)
+            foreach (var go in placed.ToArray())
             {
-                t += Time.deltaTime;
-                r.material.color = Mathf.Sin(t * 12f) > 0 ? Color.white : Colors[TntIndex];
-                yield return null;
+                if (go == null) { placed.Remove(go); continue; }
+                var b = go.GetComponent<MCBlock>();
+                if (b == null || !b.Lit) continue;
+                b.FuseLeft -= Time.deltaTime;
+                var r = go.GetComponent<Renderer>();
+                r.material.color = Mathf.Sin(b.FuseLeft * 12f) > 0 ? Color.white : Colors[TntIndex];
+                if (b.FuseLeft <= 0f) Explode(go);
             }
-            if (tnt == null) yield break;
+        }
+
+        void Explode(GameObject tnt)
+        {
             Vector3 centre = tnt.transform.position;
-            placed.Remove(tnt.gameObject);
-            Destroy(tnt.gameObject);
-            // Break ONLY blocks that this mod placed. House furniture and walls are untouched.
+            placed.Remove(tnt);
+            UnityEngine.Object.Destroy(tnt);
+            // ONLY blocks this mod placed are broken. House furniture and walls are untouched.
             foreach (var go in placed.ToArray())
             {
                 if (go == null) { placed.Remove(go); continue; }
                 if (Vector3.Distance(go.transform.position, centre) <= BlastRadius)
                 {
                     placed.Remove(go);
-                    Destroy(go);
+                    UnityEngine.Object.Destroy(go);
                 }
             }
             MitaReact("explosion");
         }
 
-        // ---- Mita reactions (guessing: the object name is unknown, so it is searched and logged) ----
+        // Mita reaction placeholder: the real object name/components are unknown, so it searches by name.
         void MitaReact(string what)
         {
             if (mita == null && Time.time > nextMitaSearch)
             {
                 nextMitaSearch = Time.time + 5f;
-                foreach (var t in FindObjectsOfType<Transform>())
-                    if (t.name.ToLower().Contains("mita")) { mita = t; Logger.LogInfo("Found Mita object: " + t.name); break; }
+                foreach (var t in UnityEngine.Object.FindObjectsOfType<Transform>())
+                    if (t.name.ToLower().Contains("mita")) { mita = t; Plugin.Instance.Log.LogInfo("Found Mita object: " + t.name); break; }
             }
-            if (mita == null) return;
-            // Placeholder reaction: turn to look at the player. Real animations/voice lines must be
-            // hooked once the game's own Mita components are known.
+            if (mita == null || Camera.main == null) return;
             var look = Camera.main.transform.position - mita.position;
             look.y = 0f;
             if (look.sqrMagnitude > 0.01f) mita.rotation = Quaternion.LookRotation(look);
-            Logger.LogInfo("Mita reacts to: " + what);
+            Plugin.Instance.Log.LogInfo("Mita reacts to: " + what);
         }
 
-        // ---- HUD: hotbar + inventory ----
         void OnGUI()
         {
             float w = 54f, gap = 6f, total = Names.Length * (w + gap);
@@ -159,7 +185,7 @@ namespace MiSideMinecraft
             {
                 var rect = new Rect(Screen.width / 2f - 185 + i * 74, Screen.height / 2f - 50, 66, 66);
                 DrawSlot(rect, i, i == slot);
-                if (GUI.Button(rect, GUIContent.none, GUIStyle.none)) slot = i;
+                if (GUI.Button(rect, "")) slot = i;
             }
         }
 
@@ -174,11 +200,5 @@ namespace MiSideMinecraft
             GUI.Label(new Rect(r.x, r.yMax - 16, r.width, 16), Names[i]);
             GUI.color = old;
         }
-    }
-
-    public class MCBlock : MonoBehaviour
-    {
-        public int Kind;
-        public bool Lit;
     }
 }

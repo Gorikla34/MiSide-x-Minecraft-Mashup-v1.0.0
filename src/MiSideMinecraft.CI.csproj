@@ -1,17 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- UNTESTED. Build on GitHub servers with public packages (no game files needed).
-       The Unity version is a guess; if the build fails or the mod misbehaves in the game, match it
-       to the game's real Unity version. -->
+  <!-- UNTESTED. BepInEx 6 (Unity IL2CPP) plugin, built on GitHub from public packages.
+       Unity version is a guess; compiled against stock UnityEngine, bound to the game's interop at runtime. -->
   <PropertyGroup>
-    <TargetFramework>net472</TargetFramework>
+    <TargetFramework>net6.0</TargetFramework>
     <AssemblyName>MiSideMinecraft</AssemblyName>
     <LangVersion>latest</LangVersion>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="Plugin.cs" />
-    <PackageReference Include="BepInEx.Core" Version="5.4.21" PrivateAssets="all" />
-    <PackageReference Include="UnityEngine.Modules" Version="2021.3.16" PrivateAssets="all" />
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.3" PrivateAssets="all" />
+    <PackageReference Include="BepInEx.Unity.IL2CPP" Version="6.0.0-be.*" PrivateAssets="all" />
+    <PackageReference Include="UnityEngine.Modules" Version="2021.3.33" PrivateAssets="all" />
   </ItemGroup>
 </Project>
