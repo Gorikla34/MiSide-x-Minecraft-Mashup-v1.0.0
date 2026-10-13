@@ -3,12 +3,13 @@
 Play as a Minecraft-style builder in Mita's house (MiSide Demo is the host game).
 
 ## What a player gets (design)
-- Minecraft-style hotbar and inventory: Dirt, Stone, Wood, Glass, TNT.
+- Real Minecraft look: block textures, hotbar and hearts are read from the player's own Minecraft Java install (nothing from Minecraft is shipped). Blocks: Dirt, Stone, Cobblestone, Oak Planks, Glass, Bricks, Sand, Stone Bricks, TNT.
 - Place and remove blocks, light TNT. TNT only breaks blocks you placed; the house stays intact.
 - Mita lives as usual but notices what you do and reacts to building and explosions.
 - Cozy and funny mood. Singleplayer.
 
-Controls: E inventory, 1-5 or mouse wheel select, right mouse place, left mouse remove, F light TNT.
+Controls: E block menu, 1-9 or mouse wheel select, right mouse place, left mouse break your own block, F light TNT.
+Requires Minecraft Java started at least once with the official launcher (needs %APPDATA%\.minecraft\versions).
 
 ## Status: SOURCE ONLY, UNTESTED
 - `src/Plugin.cs` and `src/MiSideMinecraft.csproj` were written without the game files and have never been run. IL2CPP mods cannot be built on GitHub (they need files BepInEx generates from the game), so build locally with `build.bat`.
